@@ -136,12 +136,8 @@ impl<'a> Element<'a> {
         Ok(self)
     }
 
-    pub fn call_js_fn(
-        &self,
-        function_declaration: &str,
-    ) -> Result<runtime::methods::RemoteObject, Error> {
-        let result = self
-            .parent
+    pub fn call_js_fn(&self, function_declaration: &str) -> Result<runtime::RemoteObject, Error> {
+        self.parent
             .call_method(runtime::methods::CallFunctionOn {
                 object_id: &self.remote_object_id,
                 function_declaration,
@@ -149,9 +145,8 @@ impl<'a> Element<'a> {
                 generate_preview: true,
                 silent: false,
             })?
-            .result;
-
-        Ok(result)
+            .into_result()
+            .map_err(|e| e.into())
     }
 
     pub fn focus(&self) -> Result<&Self, Error> {

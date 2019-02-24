@@ -2,21 +2,19 @@ use failure::{Error, Fail};
 use log::*;
 
 use serde;
+use serde::de::DeserializeOwned;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
 
 use super::transport::SessionId;
 use crate::browser::Transport;
-use crate::cdtp;
-use crate::cdtp::dom;
-use crate::cdtp::input;
-use crate::cdtp::page;
 use crate::cdtp::page::methods::Navigate;
 use crate::cdtp::target;
 use crate::cdtp::target::TargetId;
 use crate::cdtp::target::TargetInfo;
 use crate::cdtp::Event;
+use crate::cdtp::{self, dom, input, page, runtime};
 
 use super::waiting_helpers::{wait_for, WaitOptions};
 
@@ -126,6 +124,48 @@ impl<'a> Tab {
     {
         self.transport
             .call_method_on_target(self.session_id.clone(), method)
+    }
+
+    fn _evaluate(
+        &self,
+        expression: &str,
+        return_by_value: bool,
+    ) -> Result<runtime::RemoteObject3, Error> {
+        let r = self.call_method(runtime::methods::Evaluate {
+            expression,
+            return_by_value,
+            silent: false,
+        })?;
+        match r.exception_details {
+            Some(e) => Err(e.into()),
+            None => Ok(r.result.into()),
+        }
+    }
+
+    /// Evaluates expression on global object
+    /// ```rust
+    /// # use failure::Error;
+    /// # fn main() -> Result<(), Error> {
+    /// #
+    /// # use headless_chrome::{Browser, LaunchOptionsBuilder};
+    /// let browser = Browser::new(LaunchOptionsBuilder::default().build().unwrap())?;
+    /// let tab = browser.wait_for_initial_tab()?;
+    ///
+    /// assert_eq!(tab.evaluate_value("1+1")?, Some(2));
+    ///
+    /// let user_agent = tab.evaluate_value::<String>("navigator.userAgent")?;
+    /// assert!(&user_agent.unwrap().starts_with("Mozilla"));
+    /// #
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn evaluate_value<T: DeserializeOwned>(
+        &self,
+        expression: &str,
+    ) -> Result<Option<T>, Error> {
+        self._evaluate(expression, true)?
+            .into_value()
+            .map_err(|e| e.into())
     }
 
     pub fn wait_until_navigated(&self) -> Result<&Self, Error> {
